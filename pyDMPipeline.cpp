@@ -84,6 +84,7 @@ void pyDMPipeline::Cleanup()
 	//Persistence of windows_shared_memory is not obvious.  Apparently it just garbage-collects on exit.
 	message_queue::remove( std::string("mqPytoDM").data() );
 	message_queue::remove( std::string("mqDMtoPy").data() );
+	message_queue::remove( std::string("mqScriptstoDM").data() ); // TRH added
 
 	// MFC THREAD CODE
 	// m_mutex.Lock();
@@ -158,6 +159,7 @@ UINT pyDMPipeline::mainPipePolling()
 		// NOTE: USING OVERLOADED VERSION OF message_queue BUILD ON WINDOWS BACKEND
 		mqPytoDM = new message_queue( open_or_create, std::string("mqPytoDM").data(), QUEUE_LENGTH, BUF_SIZE );
 		mqDMtoPy = new message_queue( open_or_create, std::string("mqDMtoPy").data(), QUEUE_LENGTH, BUF_SIZE );
+		mqScriptstoDM = new message_queue( open_or_create, std::string("mqScriptstoDM").data(), QUEUE_LENGTH, MAX_SCRIPT_SIZE ); // TRH added
 	}
 	catch (interprocess_exception& e )
 	{
@@ -184,6 +186,18 @@ UINT pyDMPipeline::mainPipePolling()
 				message.resize( message_size );
 				PlugIn::gResultOut << "pyDM: Calling message parser for  # : " <<  message << std::endl;
 				this->parseMessage();
+			}
+		}
+		while( mqScriptstoDM->get_num_msg() > 0 ) // TRH added
+		{
+			script = "";
+			script_size = 0;
+			script.resize( MAX_SCRIPT_SIZE ); 
+			if( mqScriptstoDM->try_receive( (void *)&script[0], script.size(), script_size, priority ) )
+			{
+				script.resize( script_size );
+				PlugIn::gResultOut << "pyDM: Executing script." << std::endl;
+				this->ExecuteScript();
 			}
 		}
 		// else do nothing, no message
@@ -393,6 +407,25 @@ void pyDMPipeline::printReadoutParams()
 	PlugIn::gResultOut << "PrimaryShutterPostExposureComp_s: "<< ppost << std::endl;
 	PlugIn::gResultOut << "SecondaryShutterPreExposureComp_s: "<< spre << std::endl;
 	PlugIn::gResultOut << "SecondaryShutterPostExposureComp_s: "<< spost << std::endl;
+}
+
+
+void pyDMPipeline::ExecuteScript() // TRH added 
+{
+    double result;
+	DM::String script_DM = DM::String( script );
+	// found the byte string conversions here: https://stackoverflow.com/questions/6284524/bstr-to-stdstring-stdwstring-and-vice-versa
+	//int wslen = ::MultiByteToWideChar(CP_ACP, 0 /* no flags */, script.data(), script.length(), NULL, 0);
+    //BSTR script_BSTR = ::SysAllocStringLen(NULL, wslen);
+    //::MultiByteToWideChar(CP_ACP, 0 /* no flags */, script.data(), script.length(), script_BSTR, wslen);
+	//DM::String script_DM( script_BSTR, SysStringLen( script_BSTR ) );
+	// PlugIn::gResultOut << "pyDM: Executing script: " << std::endl;
+	// PlugIn::gResultOut << script << std::endl;
+	// result = DM::ExecuteScriptString( script );
+	// PlugIn::gResultOut << script_DM << std::endl;
+	result = DM::ExecuteScriptString( script_DM );
+	std::string result_string = boost::lexical_cast<std::string>(result);
+	mqDMtoPy->send(result_string.data(), result_string.size(), priority );
 }
 
 void pyDMPipeline::sendVersion()

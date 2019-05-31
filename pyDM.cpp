@@ -25,6 +25,7 @@ BOOST_PYTHON_MODULE(pyDM)
 	def( "getImage", pyDM_getImage );
 	def( "getImageRaveled", pyDM_getImageRaveled );
 	def( "sendMessage", pyDM_sendMessage );
+	def( "executeScript", pyDM_executeScript ); // TRH added
 }
 
 bool pyDM_connect()
@@ -39,6 +40,11 @@ bool pyDM_connect()
 		windows_shared_memory iImage ( open_or_create, "pyDMImageMap", read_write, MEM_SIZE );
 
 		mapImage = new mapped_region( iImage, read_write, 0, IMAGE_SIZE );
+		
+		// windows_shared_memory script_storage ( open_or_create, "pyDMScriptMap", read_write, SCRIPT_MEM_SIZE ); // TRH added
+
+		// mapScript = new mapped_region ( script_storage, read_write, 0, MAX_SCRIPT_SIZE ); // TRH added
+
 		//get the region address
 		//void * iaddr = mapImage.get_address();
 
@@ -52,6 +58,7 @@ bool pyDM_connect()
 		// NOTE: USING OVERLOADED VERSION OF message_queue BUILD ON WINDOWS BACKEND
 		mqPytoDM = new message_queue( open_or_create, std::string("mqPytoDM").data(), QUEUE_LENGTH, BUF_SIZE );
 		mqDMtoPy = new message_queue( open_or_create, std::string("mqDMtoPy").data(), QUEUE_LENGTH, BUF_SIZE );
+		mqScriptstoDM = new message_queue( open_or_create, std::string("mqScriptstoDM").data(), QUEUE_LENGTH, MAX_SCRIPT_SIZE ); // TRH added
 	}
 	catch (interprocess_exception& )
 	{
@@ -94,13 +101,13 @@ p::str pyDM_getMessage()
 	message.resize( BUF_SIZE );
 	// This is VS2008 so we cannot use to_string() apparently.
 	mqDMtoPy->try_receive( &message[0], message.size(), message_size, priority );
-	ostringstream printmessage;
-	printmessage << "print(\'message size = " << message_size << "\')";
-	PyRun_SimpleString( printmessage.str().data() );
+	// ostringstream printmessage;
+	// printmessage << "print(\'message size = " << message_size << "\')";
+	// PyRun_SimpleString( printmessage.str().data() );
 
 	if( message_size <= 0 )
 	{
-		PyRun_SimpleString( "print(\'message is null\')" );
+		// PyRun_SimpleString( "print(\'message is null\')" );
 		p::str pstring( "" );
 		return pstring;
 	}
@@ -196,7 +203,18 @@ void pyDM_sendMessage(p::str tosend )
 }
 
 
-
+void pyDM_executeScript(p::str input_script ) // TRH added
+{
+	std::string script_to_send = p::extract<std::string>(input_script);
+	if( script_to_send.length() <= MAX_SCRIPT_SIZE)
+		mqScriptstoDM->send( script_to_send.data(), script_to_send.size(), priority );
+	else
+	{
+		std::string err_result = "1";
+		mqDMtoPy->send(err_result.data(), err_result.size(), priority );
+		PyRun_SimpleString( "print(\'Script too long. Current limit is MAX_SCRIPT_SIZE. Please reduce size and send again.\')" );
+	}
+}
 
 
 

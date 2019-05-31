@@ -65,7 +65,7 @@
 #include <boost/interprocess/windows_shared_memory.hpp>
 #include <boost/interprocess/mapped_region.hpp>
 #include <boost/interprocess/detail/win32_api.hpp>
-
+#include <boost/lexical_cast.hpp>
 #include <boost/tokenizer.hpp>
 
 // MFC Multi-threading
@@ -88,9 +88,14 @@ size_t const BUF_SIZE = 256;
 #define IMAGE_CNT 2
 #define IMAGE_SIZE 2048*2048*4 // Detector returns uint16 when unprocessing, int32 when processed.
 #define MEM_SIZE IMAGE_SIZE * IMAGE_CNT
+// #define SCRIPT_CNT 2 // TRH added; not sure why Rob used IMAGE_CNT = 2 so I'll do the same with SCRIPT_CNT; maybe it was 1 space for sending and 1 for receiving?
+#define MAX_SCRIPT_SIZE 4096 // TRH added; means max 2048 characters
+// #define SCRIPT_MEM_SIZE MAX_SCRIPT_SIZE*SCRIPT_CNT // TRH added
 TCHAR tImageMap[] = TEXT("pyDMImageMap");
+// TCHAR tImageMap[] = TEXT("pyDMScriptMap"); // TRH added
 TCHAR tMQPytoDM[] = TEXT("mqPytoDM");
 TCHAR tMQDMtoPy[] = TEXT("mqDMtoPy");
+TCHAR tMQScriptstoDM[] = TEXT("mqScriptstoDM"); // TRH added
 
 typedef boost::tokenizer< boost::char_separator<char> > pyDMtokenizer;
 typedef pyDMtokenizer::iterator pyDMtokenit;
@@ -122,9 +127,11 @@ protected:
 	
 	// Boost.Interprocess
 	boost::interprocess::mapped_region* mapImage;
+	// boost::interprocess::mapped_region* mapScript; // TRH added
 
 	message_queue* mqDMtoPy;
 	message_queue* mqPytoDM;
+	message_queue* mqScriptstoDM; // TRH added
 	unsigned int priority;
 
 	// MFC Thread
@@ -138,6 +145,10 @@ protected:
 	std::string version;
 	std::string message;
 	std::size_t message_size;
+	std::string script; // TRH added
+	std::size_t script_size; // TRH added
+	// std::size_t partial_script_size; // TRH added
+	// std::string partial_script; // TRH added
 	bool isConnected;
 	bool flagShowImage;
 
@@ -168,6 +179,9 @@ protected:
 	void AcquireLow( DM::String seriesname, int imagecount );
 	void AcquireSeries( DM::String seriesname, int imagecount );
 	void SetupCamera( pyDMtokenizer tok, pyDMtokenit beg );
+
+	// Scripting interface // TRH added 
+	void ExecuteScript(); //TRH added # DM::String script 
 
 };
 
